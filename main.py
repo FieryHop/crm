@@ -12,7 +12,6 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Lead Distribution CRM")
 
 
-# Операторы
 @app.post("/operators/", response_model=schemas.Operator)
 def create_operator(operator: schemas.OperatorCreate, db: Session = Depends(get_db)):
     db_operator = models.Operator(**operator.dict())
@@ -42,7 +41,6 @@ def update_operator(operator_id: int, operator: schemas.OperatorCreate, db: Sess
     return db_operator
 
 
-# Источники
 @app.post("/sources/", response_model=schemas.Source)
 def create_source(source: schemas.SourceCreate, db: Session = Depends(get_db)):
     db_source = models.Source(**source.dict())
@@ -58,7 +56,6 @@ def read_sources(skip: int = 0, limit: int = 100, db: Session = Depends(get_db))
     return sources
 
 
-# Назначения операторов на источники
 @app.post("/assignments/", response_model=schemas.Assignment)
 def create_assignment(assignment: schemas.AssignmentCreate, db: Session = Depends(get_db)):
     db_assignment = models.OperatorAssignment(**assignment.dict())
@@ -74,9 +71,7 @@ def read_assignments(skip: int = 0, limit: int = 100, db: Session = Depends(get_
     return assignments
 
 
-# Логика распределения лидов
 def distribute_lead(source_id: int, db: Session):
-    # Находим активных операторов для источника с их весами
     assignments = db.query(models.OperatorAssignment).filter(
         models.OperatorAssignment.source_id == source_id
     ).all()
@@ -84,7 +79,6 @@ def distribute_lead(source_id: int, db: Session):
     if not assignments:
         return None
 
-    # Фильтруем по доступным операторам
     available_operators = []
     weights = []
 
@@ -97,15 +91,12 @@ def distribute_lead(source_id: int, db: Session):
     if not available_operators:
         return None
 
-    # Выбираем оператора по весам
     chosen_operator = random.choices(available_operators, weights=weights, k=1)[0]
     return chosen_operator
 
 
-# Регистрация обращения
 @app.post("/contacts/", response_model=schemas.ContactResponse)
 def create_contact(contact: schemas.ContactCreate, db: Session = Depends(get_db)):
-    # Находим или создаем лида
     lead = db.query(models.Lead).filter(
         models.Lead.external_id == contact.lead_external_id
     ).first()
@@ -116,16 +107,13 @@ def create_contact(contact: schemas.ContactCreate, db: Session = Depends(get_db)
         db.commit()
         db.refresh(lead)
 
-    # Распределяем оператора
     operator = distribute_lead(contact.source_id, db)
     operator_id = operator.id if operator else None
 
-    # Увеличиваем нагрузку оператора
     if operator:
         operator.current_load += 1
         db.commit()
 
-    # Создаем обращение
     db_contact = models.Contact(
         lead_id=lead.id,
         source_id=contact.source_id,
@@ -135,7 +123,6 @@ def create_contact(contact: schemas.ContactCreate, db: Session = Depends(get_db)
     db.commit()
     db.refresh(db_contact)
 
-    # Создаем response объект
     return schemas.ContactResponse(
         id=db_contact.id,
         lead_id=db_contact.lead_id,
@@ -146,7 +133,6 @@ def create_contact(contact: schemas.ContactCreate, db: Session = Depends(get_db)
     )
 
 
-# Просмотр лидов и обращений
 @app.get("/leads/", response_model=List[schemas.Lead])
 def read_leads(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     leads = db.query(models.Lead).offset(skip).limit(limit).all()
